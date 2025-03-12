@@ -1,0 +1,8 @@
+/* styles.css */
+.selected {
+    background-color: rgb(117, 110, 223); /* Light blue background or any color you prefer */
+    font-weight: normal;
+    color: #fff;
+    padding: 5%;
+    margin: 2%;
+  }
