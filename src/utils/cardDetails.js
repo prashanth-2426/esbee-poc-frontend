@@ -16,7 +16,7 @@ export const cardData = (cameraId, status) => {
 };
 
 export const nextScheduledData = (otId) => {
-  console.log("Reached card details page");
+  console.log("Reached next schedule card details page");
   const storedData = localStorage.getItem("otSampleData");
 
   if (!storedData) return null;

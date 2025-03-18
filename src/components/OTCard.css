@@ -32,7 +32,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px 10px;
-  background: #0f3a54;
+  background-color: #343d4a;
 }
 
 /* Middle Content */
@@ -85,8 +85,8 @@
 
 /* Status Indicator */
 .status-dot {
-  width: 20px;
-  height: 20px;
+  width: 60px;
+  height: 60px;
   background-color: yellow;
   border-radius: 50%;
 }

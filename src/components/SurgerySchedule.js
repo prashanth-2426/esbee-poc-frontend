@@ -6,7 +6,8 @@ import crea_logo from "../assets/images/FINAL_CREA_.png";
 import { io } from "socket.io-client";
 import { cardData, nextScheduledData } from "../utils/cardDetails";
 //const socket = io("http://localhost:5000"); // Connect to backend
-const socket = io("http://192.168.0.113:5000"); // Connect to backend
+import socket from "../Socket";
+//const socket = io("http://192.168.0.113:5000"); // Connect to backend
 
 const getStatusColor = (status) => {
   switch (status) {
@@ -44,6 +45,10 @@ const getStatus = (scheduledDatetime, wheelIn, status) => {
 
   if (wheelIn && status != "IN PROGRESS") {
     return "WHEEL IN";
+  }
+
+  if (status === "Wheel Out") {
+    return "Wheel Out";
   }
 
   if (status === "IN PROGRESS") {
@@ -104,21 +109,37 @@ const SurgerySchedule = ({ otCardData }) => {
             itemDateTime < currentTime
           ) {
             console.log("Updating status for OT:", extractedOtNo);
-            return { ...item, status: "WHEEL IN", wheelIn: true };
+            return {
+              ...item,
+              status: otCardData.status,
+              wheelIn: otCardData.status === "Wheel In" ? true : false,
+            };
           }
           return item;
         });
 
         console.log("Updated Sample Data:", updatedData); // Debugging: Check updated data
         localStorage.setItem("otSampleData", JSON.stringify(updatedData)); // Persist changes
-        speakText(`Status of OT No ${extractedOtNo} is moved to WHEEL IN`);
+        speakText(
+          `Status of OT No ${extractedOtNo} is moved to ${otCardData.status}`
+        );
         return updatedData;
       });
+
+      const timeoutDuration =
+        otCardData.status === "Wheel In" ? 1 * 60 * 1000 : 5 * 60 * 1000; // 1 min for "Wheel In", 5 min for "Wheel Out"
+      console.log("timeutDurationvalue", timeoutDuration);
 
       // **Schedule Status Change to "IN PROGRESS" after 5 minutes**
       setTimeout(() => {
         console.log("came to set timeout logic..");
         setSampleData((prevData) => {
+          let sts;
+          if (otCardData.status === "Wheel In") {
+            sts = "IN PROGRESS";
+          } else if (otCardData.status === "Wheel Out") {
+            sts = otCardData.status;
+          }
           const updatedData = prevData.map((item) => {
             const itemDateTime = new Date(item.datetime);
             const currentTime = new Date();
@@ -126,27 +147,28 @@ const SurgerySchedule = ({ otCardData }) => {
               item.otNo.toString() === extractedOtNo &&
               itemDateTime < currentTime
             ) {
-              console.log(
-                `Changing OT-${extractedOtNo} status to "IN PROGRESS"`
-              );
-              return { ...item, status: "IN PROGRESS" };
+              console.log(`Changing OT-${extractedOtNo} status to ${sts}`);
+              return { ...item, status: sts };
             }
             return item;
           });
 
           console.log("Updated Sample Data after 1 min:", updatedData);
           localStorage.setItem("otSampleData", JSON.stringify(updatedData)); // Persist changes
-          speakText(`Status of OT No ${extractedOtNo} is moved to IN PROGRESS`);
+          speakText(`Status of OT No ${extractedOtNo} is moved to ${sts}`);
           const sampleData = {
-            status: "In Progress",
+            status: sts,
             timestamp: Date.now(),
             otId: extractedOtNo,
           };
           console.log("Pushing on Inprogress status", sampleData);
           //socket.emit("push-data", sampleData);
-          let filteredCase = cardData(extractedOtNo, "In Progress");
-          let nextScheduledCase = nextScheduledData(extractedOtNo);
-          console.log("next scheduled data::", nextScheduledCase);
+          let filteredCase =
+            sts === "IN PROGRESS"
+              ? cardData(extractedOtNo, sts)
+              : nextScheduledData(extractedOtNo);
+          //let nextScheduledCase = nextScheduledData(extractedOtNo);
+          //console.log("next scheduled data::", nextScheduledCase);
           socket.emit("push-data", {
             otId: filteredCase.otNo,
             ...filteredCase,
@@ -208,10 +230,18 @@ const SurgerySchedule = ({ otCardData }) => {
       localStorage.setItem("otSampleData", JSON.stringify(formattedData));
       setSampleData(formattedData);
 
+      // Track pushed OT Nos to prevent duplicates
+      const pushedOtNos = new Set();
+
       // Push each OT entry to the WebSocket server
       formattedData.forEach((data) => {
-        console.log("pushing data of each...");
-        socket.emit("push-data", { otId: data.otNo, ...data });
+        if (!pushedOtNos.has(data.otNo)) {
+          pushedOtNos.add(data.otNo);
+          console.log("pushing data of each...");
+          const status = getStatus(data.datetime, data.wheelIn, data.status);
+          data.status = status;
+          socket.emit("push-data", { otId: data.otNo, ...data });
+        }
       });
     };
 
@@ -221,7 +251,6 @@ const SurgerySchedule = ({ otCardData }) => {
   return (
     <div className="table-container">
       <Form.Group controlId="fileUpload" className="mb-3">
-        <Form.Label>Upload Excel File</Form.Label>
         <Form.Control
           type="file"
           accept=".xlsx, .xls"
