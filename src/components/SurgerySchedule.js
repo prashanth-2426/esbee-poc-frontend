@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Table, Form } from "react-bootstrap";
+import React, { useState, useEffect, useRef } from "react";
+import { Table, Form, Button, InputGroup, Row, Col } from "react-bootstrap";
 import "./SurgerySchedule.css"; // Import custom styles
 import * as XLSX from "xlsx";
 import crea_logo from "../assets/images/FINAL_CREA_.png";
@@ -26,40 +26,28 @@ const getStatusColor = (status) => {
   }
 };
 
-const getStatus = (scheduledDatetime, wheelIn, status) => {
-  //console.log("status value is ", status);
-  //console.log("scheduled timevalue", scheduledTime);
-  //console.log("wheelin value", wheelIn);
+const getStatus = (scheduledDatetime, wheelIn, status, caseId, item) => {
   const currentTime = new Date();
-  //const [hours, minutes] = scheduledTime.split(":").map(Number);
-
-  // Create scheduled date with no milliseconds
   const scheduledDate = new Date(scheduledDatetime); // Convert full datetime string to Date object
-  //scheduledDate.setHours(hours, minutes, 0, 0); // Ensure no extra seconds/milliseconds
   scheduledDate.setMilliseconds(0);
-
   const fiveMinutesAfter = new Date(scheduledDate.getTime() + 5 * 60000);
   fiveMinutesAfter.setMilliseconds(0);
-
-  //console.log("wheelin value", wheelIn);
-
   if (wheelIn && status != "IN PROGRESS") {
     return "WHEEL IN";
   }
-
   if (status === "Wheel Out") {
     return "Wheel Out";
   }
-
   if (status === "IN PROGRESS") {
     return "IN PROGRESS";
   }
-
   if (currentTime < scheduledDate) {
     return "SCHEDULED";
   } else if (currentTime >= scheduledDate && currentTime <= fiveMinutesAfter) {
+    sendMsgToSocket(caseId, "WAITING", item);
     return "WAITING";
   } else if (currentTime > fiveMinutesAfter && !wheelIn) {
+    sendDelayedMsgToSocket(caseId, "DELAYED", item);
     return "DELAYED";
   } else if (wheelIn) {
     //console.log("inside wheelin true block");
@@ -67,11 +55,58 @@ const getStatus = (scheduledDatetime, wheelIn, status) => {
   }
 };
 
+const sentCases = [];
+const delayedCases = [];
+
+const sendMsgToSocket = (caseId, sts, item) => {
+  if (sentCases.includes(caseId)) {
+    return;
+  }
+  sentCases.push(caseId);
+  setTimeout(() => {
+    console.log(`✅ Executing socket.emit for caseId: ${caseId}`);
+    if (item) {
+      item.status = sts;
+
+      socket.emit("push-data", {
+        otId: item.otNo,
+        ...item,
+      });
+    }
+    // setTimeout(() => {
+    //   //console.log(`⏳ Exiting method after 3 seconds for caseId: ${caseId}`);
+    //   //sentCases.push(caseId); // Mark caseId as processed
+    // }, 5000); // Wait 3 seconds before marking as processed
+  }, 5000); // Wait 2 seconds before executing logic
+};
+
+const sendDelayedMsgToSocket = (caseId, sts, item) => {
+  if (delayedCases.includes(caseId)) {
+    return;
+  }
+  delayedCases.push(caseId);
+  setTimeout(() => {
+    console.log(`✅ Executing socket.emit for caseId: ${caseId}`);
+    if (item) {
+      item.status = sts;
+      socket.emit("push-data", {
+        otId: item.otNo,
+        ...item,
+      });
+    }
+    // // After executing, wait for another 3 seconds before exiting
+    // setTimeout(() => {
+    //   //console.log(`⏳ Exiting method after 3 seconds for caseId: ${caseId}`);
+    //   //sentCases.push(caseId); // Mark caseId as processed
+    // }, 5000); // Wait 3 seconds before marking as processed
+  }, 5000);
+};
+
 const speakText = (text) => {
   if ("speechSynthesis" in window) {
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US"; // Set language (change if needed)
-    utterance.rate = 1; // Adjust speed (0.1 - 2)
+    utterance.lang = "en-US";
+    utterance.rate = 1;
     speechSynthesis.speak(utterance);
   } else {
     console.warn("Speech synthesis is not supported in this browser.");
@@ -93,21 +128,18 @@ const SurgerySchedule = ({ otCardData }) => {
   useEffect(() => {
     if (otCardData && otCardData.status) {
       console.log("Received otCardData:", otCardData);
-
-      // Extract OT number from message (e.g., 'OT-7' → '7')
-      //const extractedOtNo = otCardData.status.replace("OT-", "").trim();
       const extractedOtNo = otCardData.otId;
+      const extractedCaseId = otCardData.caseId;
+      console.log("extractedCaseId value::", extractedCaseId);
 
       setSampleData((prevData) => {
         console.log("prevData value", prevData);
         const updatedData = prevData.map((item) => {
           const itemDateTime = new Date(item.datetime);
           const currentTime = new Date();
-
-          if (
-            item.otNo.toString() === extractedOtNo &&
-            itemDateTime < currentTime
-          ) {
+          console.log("item CaseId value::", item.caseId);
+          console.log("both value check::", item.caseId === extractedCaseId);
+          if (item.caseId === extractedCaseId) {
             console.log("Updating status for OT:", extractedOtNo);
             return {
               ...item,
@@ -143,10 +175,8 @@ const SurgerySchedule = ({ otCardData }) => {
           const updatedData = prevData.map((item) => {
             const itemDateTime = new Date(item.datetime);
             const currentTime = new Date();
-            if (
-              item.otNo.toString() === extractedOtNo &&
-              itemDateTime < currentTime
-            ) {
+
+            if (item.caseId === extractedCaseId) {
               console.log(`Changing OT-${extractedOtNo} status to ${sts}`);
               return { ...item, status: sts };
             }
@@ -154,25 +184,24 @@ const SurgerySchedule = ({ otCardData }) => {
           });
 
           console.log("Updated Sample Data after 1 min:", updatedData);
-          localStorage.setItem("otSampleData", JSON.stringify(updatedData)); // Persist changes
-          speakText(`Status of OT No ${extractedOtNo} is moved to ${sts}`);
-          const sampleData = {
-            status: sts,
-            timestamp: Date.now(),
-            otId: extractedOtNo,
-          };
-          console.log("Pushing on Inprogress status", sampleData);
-          //socket.emit("push-data", sampleData);
+          localStorage.setItem("otSampleData", JSON.stringify(updatedData));
           let filteredCase =
             sts === "IN PROGRESS"
-              ? cardData(extractedOtNo, sts)
+              ? cardData(extractedOtNo, sts, extractedCaseId)
               : nextScheduledData(extractedOtNo);
-          //let nextScheduledCase = nextScheduledData(extractedOtNo);
-          //console.log("next scheduled data::", nextScheduledCase);
-          socket.emit("push-data", {
-            otId: filteredCase.otNo,
-            ...filteredCase,
-          });
+          if (filteredCase != null) {
+            if (sts == "Wheel Out") {
+              speakText(
+                `Status of OT No ${extractedOtNo} is moved to Next Schedule`
+              );
+            } else {
+              speakText(`Status of OT No ${extractedOtNo} is moved to ${sts}`);
+            }
+            socket.emit("push-data", {
+              otId: filteredCase.otNo,
+              ...filteredCase,
+            });
+          }
           return updatedData;
         });
       }, 1 * 60 * 1000); // **5 minutes delay**
@@ -225,6 +254,7 @@ const SurgerySchedule = ({ otCardData }) => {
         otNo: row["OT No"] || "",
         status: row["Status"] || "",
         wheelIn: false,
+        image: row["Image"] || "",
       }));
 
       localStorage.setItem("otSampleData", JSON.stringify(formattedData));
@@ -248,15 +278,41 @@ const SurgerySchedule = ({ otCardData }) => {
     reader.readAsArrayBuffer(file);
   };
 
+  const handleReset = () => {
+    localStorage.removeItem("otSampleData"); // Replace with your actual key
+    window.location.reload(); // Refresh if needed
+  };
+
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "N/A";
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are zero-based
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${day}-${month}-${year} ${hours}:${minutes}:${seconds}`;
+  };
+
   return (
     <div className="table-container">
-      <Form.Group controlId="fileUpload" className="mb-3">
-        <Form.Control
-          type="file"
-          accept=".xlsx, .xls"
-          onChange={handleFileUpload}
-        />
-      </Form.Group>
+      <Row>
+        <Col xs={10}>
+          <Form.Group controlId="fileUpload" className="mb-3">
+            <Form.Control
+              type="file"
+              accept=".xlsx, .xls"
+              onChange={handleFileUpload}
+            />
+          </Form.Group>
+        </Col>
+        <Col xs={2}>
+          <Button variant="outline-primary" onClick={handleReset}>
+            Reload Data
+          </Button>
+        </Col>
+      </Row>
       <div className="table-header">
         <img
           className=""
@@ -288,10 +344,16 @@ const SurgerySchedule = ({ otCardData }) => {
         </thead>
         <tbody>
           {sampleData.map((item) => {
-            const status = getStatus(item.datetime, item.wheelIn, item.status);
+            const status = getStatus(
+              item.datetime,
+              item.wheelIn,
+              item.status,
+              item.caseId,
+              item
+            );
             return (
               <tr>
-                <td>{item.datetime}</td>
+                <td>{formatDateTime(item.datetime)}</td>
                 <td>{item.caseId}</td>
                 <td>{item.procedure}</td>
                 <td>{item.surgeon}</td>

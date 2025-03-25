@@ -1,4 +1,4 @@
-export const cardData = (cameraId, status) => {
+export const cardData = (cameraId, status, caseId) => {
   console.log("reached card details page");
   const storedData = localStorage.getItem("otSampleData");
   let filteredCase = null; // Declare outside the if block
@@ -6,12 +6,19 @@ export const cardData = (cameraId, status) => {
     const casesArray = JSON.parse(storedData);
     console.log("casearray data", casesArray);
     // Find the case with the given otNo
-    filteredCase = casesArray.find((item) => item.otNo === Number(cameraId));
+    filteredCase = casesArray.find(
+      (item) => item.otNo === Number(cameraId) && item.caseId === caseId
+    );
 
     console.log("filered case details", filteredCase);
   }
+  if (filteredCase) {
+    filteredCase.status = status;
+  } else {
+    console.warn(`No matching case found for cameraId: ${cameraId}`);
+    return null; // Return null explicitly if no match is found
+  }
 
-  filteredCase.status = status;
   return filteredCase;
 };
 
@@ -34,7 +41,7 @@ export const nextScheduledData = (otId) => {
     .filter(
       (item) =>
         item.otNo === Number(otId) &&
-        //item.status === "Scheduled" &&
+        item.status === "Scheduled" &&
         new Date(item.datetime) > currentTime
     )
     .sort((a, b) => new Date(a.datetime) - new Date(b.datetime)); // Sort by nearest date

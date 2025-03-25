@@ -34,12 +34,12 @@ export default function Home() {
   useEffect(() => {
     socket.on("wheel_in_detected", (data) => {
       console.log("Wheel In detected:", data);
-      sendDataToOTCard("7", data.status);
+      sendDataToOTCard(data.cam_name, data.status, data.caseId);
     });
 
     socket.on("wheel_out_detected", (data) => {
       console.log("Wheel Out detected:", data);
-      sendDataToOTCard("7", data.status);
+      sendDataToOTCard(data.cam_name, data.status, data.caseId);
     });
 
     return () => {
@@ -48,20 +48,20 @@ export default function Home() {
     };
   }, []);
 
-  const sendDataToOTCard = (cameraId, status) => {
+  const sendDataToOTCard = (cameraId, status, caseId) => {
     console.log("Sending data to OT Card");
     console.log("cameraid value", cameraId);
+
+    let filteredCase = cardData(cameraId, status, caseId);
+    socket.emit("push-data", { otId: filteredCase.otNo, ...filteredCase });
 
     const sampleData = {
       status: status,
       timestamp: Date.now(),
       otId: cameraId,
+      caseId: filteredCase.caseId,
     };
     console.log("sameple data value", sampleData);
-    //socket.emit("push-data", sampleData);
-
-    let filteredCase = cardData(cameraId, status);
-    socket.emit("push-data", { otId: filteredCase.otNo, ...filteredCase });
 
     // Update state so SurgerySchedule receives it
     setOtCardData(sampleData);

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Card, Container } from "react-bootstrap";
+import { Card, Container, Dropdown, Row, Col } from "react-bootstrap";
 import "./OTCard.css"; // Import the CSS file
 import crea_logo from "../assets/images/FINAL_CREA_.png";
 import { io } from "socket.io-client";
@@ -45,7 +45,7 @@ const OTCard = () => {
         return "orange";
       case "DELAYED":
         return "red";
-      case "WHEEL IN":
+      case "Wheel In":
         return "green";
       case "IN PROGRESS":
         return "yellow";
@@ -68,6 +68,22 @@ const OTCard = () => {
     return `${day}-${month}-${year} ${hours}:${minutes}:${seconds}`;
   };
 
+  // Handle status change event
+  const handleStatusChange = (newStatus) => {
+    console.log(`Status changed to: ${newStatus}`);
+
+    // Immediately update the state to reflect the new status in UI
+    setData((prevData) => ({
+      ...prevData,
+      status: newStatus,
+    }));
+    socket.emit("updated-status-manually", {
+      cam_name: otId,
+      status: newStatus,
+      caseId: data.caseId,
+    });
+  };
+
   return (
     <div className="ot-container">
       <Card className="ot-card text-white">
@@ -86,11 +102,22 @@ const OTCard = () => {
           </div>
 
           {/* Body Section */}
-          <div className="ot-content">
+          {/* <div className="ot-content">
             <h6 className="procedure">{data?.procedure}</h6>
             <p className="doctor">Surgeon: {data?.surgeon}</p>
             <p className="patient">Patient: {data?.patient}</p>
-          </div>
+          </div> */}
+
+          <Row className="gx-0 align-items-center">
+            <Col xs={12} md={6} className="text-end">
+              <h6 className="procedure">{data?.procedure}</h6>
+              <p className="doctor">Surgeon: {data?.surgeon}</p>
+              <p className="patient">Patient: {data?.patient}</p>
+            </Col>
+            <Col xs={12} md={6} className="text-center">
+              <img src={data?.image} height="360" alt="surgeon image" />
+            </Col>
+          </Row>
 
           {/* Footer Section */}
           <div className="ot-footer">
@@ -100,6 +127,42 @@ const OTCard = () => {
               className="status-dot"
               style={{ backgroundColor: getStatusColor(data?.status) }}
             ></span>
+
+            {/* Dropdown for status selection */}
+            {data?.status !== undefined &&
+              data?.status !== null &&
+              data?.status !== "" &&
+              data?.status !== "Wheel Out" &&
+              data?.status !== "Wheel In" &&
+              data?.status !== "IN PROGRESS" && (
+                <Dropdown>
+                  <Dropdown.Toggle variant="primary" id="dropdown-basic">
+                    Change Status
+                  </Dropdown.Toggle>
+                  <Dropdown.Menu>
+                    <Dropdown.Item
+                      onClick={() => handleStatusChange("Wheel In")}
+                    >
+                      Wheel In
+                    </Dropdown.Item>
+                  </Dropdown.Menu>
+                </Dropdown>
+              )}
+
+            {data?.status === "IN PROGRESS" && (
+              <Dropdown>
+                <Dropdown.Toggle variant="primary" id="dropdown-basic">
+                  Change Status
+                </Dropdown.Toggle>
+                <Dropdown.Menu>
+                  <Dropdown.Item
+                    onClick={() => handleStatusChange("Wheel Out")}
+                  >
+                    Wheel Out
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown>
+            )}
           </div>
         </Card.Body>
       </Card>
